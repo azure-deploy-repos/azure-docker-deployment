@@ -1,0 +1,55 @@
+
+name: CentOS Docker Pipeline
+
+# Trigger pipeline on push and pull requests
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  docker-build-test:
+    name: Build and Test Docker Image
+    runs-on: ubuntu-latest
+
+    steps:
+      # Step 1: Checkout source code
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      # Step 2: Build Docker image
+      - name: Build Docker Image
+        run: |
+          docker build -t centos-httpd:v1 .
+
+      # Step 3: Start container
+      - name: Run Docker Container
+        run: |
+          docker run -d \
+            --name centos-httpd-container \
+            -p 8080:80 \
+            centos-httpd:v1
+
+      # Step 4: Test Apache website
+      - name: Test Website
+        run: |
+          for i in {1..10}; do
+            if curl --fail http://localhost:8080; then
+              echo "Website is working successfully!"
+              exit 0
+            fi
+            sleep 3
+          done
+
+          echo "Website health check failed"
+          docker logs centos-httpd-container
+          exit 1
+
+      # Step 5: Cleanup
+      - name: Cleanup Container
+        if: always()
+        run: |
+          docker rm -f centos-httpd-container || true
