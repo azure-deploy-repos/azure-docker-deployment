@@ -1,15 +1,15 @@
-
-# Use CentOS 10 base image
-FROM quay.io/centos/centos:10
-
-# Install Apache HTTP Server
-RUN yum -y install httpd && yum clean all
-
-# Expose HTTP port
+ARG baseimageversion=10
+FROM quay.io/centos/centos:${baseimageversion}
+RUN yum -y install httpd unzip
+ARG APP_VERSION=1.0.0
+ENV APP_VERSION=${APP_VERSION}
 EXPOSE 80
-
-# Create a simple welcome page
-RUN echo "Welcome to Docker Lesson" > /var/www/html/index.html
-
-# Start Apache in foreground
-ENTRYPOINT ["/usr/sbin/httpd", "-D", "FOREGROUND"]
+ADD templatemo_634_lantern_river.zip /opt
+WORKDIR /opt
+RUN unzip templatemo_634_lantern_river.zip
+RUN cp -r templatemo_634_lantern_river/* /var/www/html/
+RUN chown -R apache:apache /var/www/html/
+RUN chown -R apache:apache /etc/httpd/logs/ /run/httpd
+RUN echo "ServerName localhost" >>/etc/httpd/conf/httpd.conf
+USER apache
+CMD ["/usr/sbin/httpd", "-D", "FOREGROUND"]
