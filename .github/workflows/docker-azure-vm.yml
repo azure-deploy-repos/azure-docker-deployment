@@ -47,7 +47,7 @@ jobs:
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
           client-id: ${{ secrets.AZURE_CLIENT_ID }}
 
-      # Step 5: Login to Azure Container Registry
+      # Step 5: Login to the Azure Container Registry
       - name: ACR Login
         uses: azure/docker-login@v2
         with:
