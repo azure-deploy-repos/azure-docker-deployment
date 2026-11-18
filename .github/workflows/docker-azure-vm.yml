@@ -76,8 +76,8 @@ jobs:
           IMAGE: ${{ env.ACR_LOGIN_SERVER }}/${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}
         with:
           host: ${{ secrets.VM_HOST }}
-          username: ${{ secrets.USERNAME }}
-          password: ${{ secrets.PASSWORD }}
+          username: ${{ secrets.VM_USERNAME }}
+          password: ${{ secrets.VM_PASSWORD }}
           port: 80
           envs: ACR_LOGIN_SERVER,ACR_USERNAME,ACR_PASSWORD,IMAGE
           script: |
