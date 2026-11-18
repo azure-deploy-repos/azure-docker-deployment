@@ -1,117 +1,135 @@
-name: Build and Deploy Docker Container to Azure VM
 
-on:
-  push:
-    branches:
-      - main
+  name: Build and Deploy Docker Container to Azure VM
 
-  workflow_dispatch:
+  on:
+    push:
+      branches:
+        - main
 
-permissions:
-  contents: read
-  id-token: write
+    workflow_dispatch:
 
-env:
-  ACR_LOGIN_SERVER: digifrontend.azurecr.io
-  IMAGE_NAME: digifrontend/webapp-test
-  IMAGE_TAG: ${{ github.sha }}
+  permissions:
+    contents: read
+    id-token: write
 
-jobs:
-  Build_and_Deploy:
-    name: Build, Push and Deploy
-    runs-on: ubuntu-latest
+  env:
+    ACR_LOGIN_SERVER: digifrontend.azurecr.io
+    IMAGE_NAME: digifrontend/webapp-test
+    IMAGE_TAG: ${{ github.sha }}
 
-    steps:
-      # Step 1: Checkout source code
-      - name: Checkout Code
-        uses: actions/checkout@v7
-        with:
-          ref: main
+  jobs:
 
-      # Step 2: Setup Docker
-      - name: Setup Docker
-        uses: docker/setup-docker-action@v5
+    # ==========================================
+    # JOB 1: BUILD AND PUSH DOCKER CONTAINER
+    # ==========================================
+    build_docker_container:
+      name: Build and Push Docker Image
+      runs-on: ubuntu-latest
 
-      # Step 3: Setup Docker Buildx
-      - name: Setup Docker Buildx
-        uses: docker/setup-buildx-action@v4
+      steps:
 
-      # Step 4: Login to Azure
-      - name: Azure Login
-        uses: azure/login@v3
-        with:
-          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
-          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
-          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+        # Step 1: Checkout source code
+        - name: Checkout Code
+          uses: actions/checkout@v7
+          with:
+            ref: main
 
-      # Step 5: Login to ACR
-      - name: ACR Login
-        uses: azure/docker-login@v2
-        with:
-          login-server: ${{ env.ACR_LOGIN_SERVER }}
-          username: ${{ secrets.ACR_USERNAME }}
-          password: ${{ secrets.ACR_PASSWORD }}
+        # Step 2: Setup Docker
+        - name: Setup Docker
+          uses: docker/setup-docker-action@v5
 
-      # Step 6: Build Docker Image
-      - name: Build Docker Image
-        run: |
-          docker build \
-            -t $ACR_LOGIN_SERVER/$IMAGE_NAME:$IMAGE_TAG .
+        # Step 3: Setup Docker Buildx
+        - name: Setup Docker Buildx
+          uses: docker/setup-buildx-action@v4
 
-      # Step 7: Push Docker Image to ACR
-      - name: Push Docker Image to ACR
-        run: |
-          docker push $ACR_LOGIN_SERVER/$IMAGE_NAME:$IMAGE_TAG
+        # Step 4: Login to Azure
+        - name: Azure Login
+          uses: azure/login@v3
+          with:
+            tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+            subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+            client-id: ${{ secrets.AZURE_CLIENT_ID }}
 
-      # Step 8: Login to Azure VM and Deploy Container
-      - name: Login to VM and Deploy Container
-        uses: appleboy/ssh-action@v1
-        env:
-          ACR_LOGIN_SERVER: ${{ env.ACR_LOGIN_SERVER }}
-          ACR_USERNAME: ${{ secrets.ACR_USERNAME }}
-          ACR_PASSWORD: ${{ secrets.ACR_PASSWORD }}
-          IMAGE: ${{ env.ACR_LOGIN_SERVER }}/${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}
+        # Step 5: Login to ACR
+        - name: ACR Login
+          uses: azure/docker-login@v2
+          with:
+            login-server: ${{ env.ACR_LOGIN_SERVER }}
+            username: ${{ secrets.ACR_USERNAME }}
+            password: ${{ secrets.ACR_PASSWORD }}
 
-        with:
-          host: ${{ secrets.VM_HOST }}
-          username: ${{ secrets.VM_USERNAME }}
-          password: ${{ secrets.VM_PASSWORD }}
-          port: 22
-          timeout: 60s
-          command_timeout: 10m
-          envs: ACR_LOGIN_SERVER,ACR_USERNAME,ACR_PASSWORD,IMAGE
+        # Step 6: Build Docker Image
+        - name: Build Docker Image
+          run: |
+            docker build \
+              -t $ACR_LOGIN_SERVER/$IMAGE_NAME:$IMAGE_TAG .
 
-          script: |
-            set -e
+        # Step 7: Push Docker Image to ACR
+        - name: Push Docker Image to ACR
+          run: |
+            docker push $ACR_LOGIN_SERVER/$IMAGE_NAME:$IMAGE_TAG
+    
 
-            echo "Checking Docker installation..."
+    # ==========================================
+    # JOB 2: DEPLOY CONTAINER INTO AZURE VM
+    # ==========================================
+    deploy_container_into_vm:
+      name: Deploy Container into Azure VM
+      runs-on: ubuntu-latest
 
-            # Step 9: Install Docker if not installed
-            if ! command -v docker >/dev/null 2>&1; then
-              sudo apt-get update
-              sudo apt-get install -y docker.io
-            fi
+      needs: build_docker_container
 
-            sudo systemctl enable --now docker
+      steps:
 
-            echo "Docker is ready."
+        # Step 8: Login to Azure VM and Deploy Container
+        - name: Login to VM and Deploy Container
+          uses: appleboy/ssh-action@v1
+          env:
+            ACR_LOGIN_SERVER: ${{ env.ACR_LOGIN_SERVER }}
+            ACR_USERNAME: ${{ secrets.ACR_USERNAME }}
+            ACR_PASSWORD: ${{ secrets.ACR_PASSWORD }}
+            IMAGE: ${{ env.ACR_LOGIN_SERVER }}/${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}
 
-            # Step 10: Login to ACR from VM
-            echo "$ACR_PASSWORD" | sudo docker login "$ACR_LOGIN_SERVER" \
-              --username "$ACR_USERNAME" \
-              --password-stdin
+          with:
+            host: ${{ secrets.VM_HOST }}
+            username: ${{ secrets.VM_USERNAME }}
+            password: ${{ secrets.VM_PASSWORD }}
+            port: 22
+            timeout: 60s
+            command_timeout: 10m
+            envs: ACR_LOGIN_SERVER,ACR_USERNAME,ACR_PASSWORD,IMAGE
 
-            # Step 11: Pull Docker Image from ACR
-            sudo docker pull "$IMAGE"
-
-            # Step 12: Remove existing container if present
-            sudo docker rm -f webapp_http || true
-
-            # Step 13: Run the new container
-            sudo docker run -d \
-              --name webapp_http \
-              --restart unless-stopped \
-              -p 80:80 \
-              "$IMAGE"
-
-            echo "Deployment completed successfully!"
+            script: |
+              set -e
+              
+              echo "Checking Docker installation..."
+              
+              # Step 9: Install Docker if not installed
+              if ! command -v docker >/dev/null 2>&1; then
+                sudo apt-get update
+                sudo apt-get install -y docker.io
+              fi
+              
+              sudo systemctl enable --now docker
+              
+              echo "Docker is ready."
+              
+              # Step 10: Login to ACR from VM
+              echo "$ACR_PASSWORD" | sudo docker login "$ACR_LOGIN_SERVER" \
+                --username "$ACR_USERNAME" \
+                --password-stdin
+              
+              # Step 11: Pull Docker Image from ACR
+              sudo docker pull "$IMAGE"
+              
+              # Step 12: Remove existing container if present
+              sudo docker rm -f webapp_http || true
+              
+              # Step 13: Run the new container
+              sudo docker run -d \
+                --name webapp_http \
+                --restart unless-stopped \
+                -p 80:80 \
+                "$IMAGE"
+              
+              echo "Deployment completed successfully!"
